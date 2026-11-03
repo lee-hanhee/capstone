@@ -100,7 +100,9 @@ This loads `artifacts/baseline/best.pt` and runs locally on CPU with no model
 download. It returns three scores, the predicted classes, and an `irrelevant`
 Boolean. Use the original image rather than an already-padded prepared image.
 
-Prepared images and model artifacts are gitignored. The raw ground truth and
+Prepared images, large generated JSON files, and model artifacts are gitignored.
+The dataset audit is saved to `data/dataset_audit.json`, and the preparation summary
+to `data/baseline/preparation_summary.json`. The raw ground truth and
 `data/baseline/manifest.json` retain all boxes; `reports/` contains shareable metrics,
 figures, predictions, and slide notes. Keep `artifacts/baseline/best.pt` locally.
 The runner refuses to overwrite an existing metrics file; move the previous run

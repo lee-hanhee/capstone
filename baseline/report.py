@@ -162,7 +162,7 @@ def generate(data_dir, run_dir, output):
     for name in ["config.json", "metrics.json", "history.json", "test_predictions.csv"]:
         shutil.copy2(run_dir / name, output / name)
     summary = {k: v for k, v in manifest.items() if k != "rows"}
-    (output / "preparation_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (data_dir / "preparation_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     def pct(x):
         return f"{100*x:.1f}%"

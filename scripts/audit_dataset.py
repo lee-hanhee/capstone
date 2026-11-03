@@ -104,7 +104,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path("annotated"))
     parser.add_argument("--output", type=Path,
-                        default=Path("reports/dataset_audit.json"))
+                        default=Path("data/dataset_audit.json"))
     args = parser.parse_args()
     result = audit(args.data_dir)
     args.output.parent.mkdir(parents=True, exist_ok=True)

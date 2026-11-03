@@ -32,7 +32,7 @@ Run from the repository root, using Python's standard library:
 python scripts/audit_dataset.py
 ```
 
-The output is `reports/dataset_audit.json`. It includes input annotation hashes,
+The output is `data/dataset_audit.json` (gitignored). It includes input annotation hashes,
 counts, unmarked image candidates, and frames needing clean sources. It checks
 referenced image existence, class/filename consistency, Boolean labels, valid
 boxes, cross-class frame coverage, consistent geometry, and label agreement
