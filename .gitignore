@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+annotated/
+
+# Prepared images and trained weights (regenerate using README commands).
+data/
+artifacts/
+.DS_Store
+*.tar.zst
+docs/*.pdf

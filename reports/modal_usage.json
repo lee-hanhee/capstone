@@ -1,0 +1,16 @@
+{
+  "app_id": "ap-z0c9IViSp2zAvut9NFNRsJ",
+  "app_url": "https://modal.com/apps/lee-hanhee/main/ap-z0c9IViSp2zAvut9NFNRsJ",
+  "status": "completed",
+  "budget_usd": 10,
+  "reported_rows": [
+    {
+      "object_id": "ap-z0c9IViSp2zAvut9NFNRsJ",
+      "description": "see2hear-baseline",
+      "environment": "main",
+      "interval_start": "2026-11-03T05:00:00",
+      "cost": "0.01442504"
+    }
+  ],
+  "note": "Usage reported at check time, not a final invoice. May lag or exclude costs attributed to image builds."
+}
