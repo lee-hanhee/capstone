@@ -1,9 +1,48 @@
 # Baseline preparation and confirmed decisions
 
+## Current clean-image run
+
+The supplied `unannotated/` export now restores all 208 previously excluded
+frames. It contains 4,551 PNG copies / 1,200 unique frames from 12 videos; no
+frames in this cohort are excluded. It is not the complete earlier 19-video set.
+The current annotation JSONs are absent, so labels and 2,406 instance boxes are
+retained from `data/baseline/manifest.json`, cross-checked against all export
+presence labels and positive-instance filenames. Selected input SHA-256 hashes
+and dimensions were verified before resizing.
+
+Confirmed rerun: 224px, unchanged ten-epoch training settings, new seed-42 8/2/2
+video split (800/200/200 frames), validation-only per-class F1 threshold fitting.
+Epoch 2 was selected before full fine-tuning. Test macro F1 is 0.682 at fixed 0.5
+and 0.611 with the configured selected thresholds. These are different operating
+policies for one checkpoint, not different architectures. Historical scores below
+use different data/splits and are not a controlled comparison.
+
+See [current results](../reports/clean_224/results.md),
+[single-model slide plan](../reports/progress_slides.md), and
+[Good + Outstanding rubric alignment](../reports/rubric_alignment.md).
+Figures use Lato and the supplied palette; titles/scripts are in Markdown only.
+
+## Historical preparation record (original 19-video experiment)
+
 The baseline has been implemented with the user's confirmed settings. This file
 records the preparation findings and design rationale. See
 [measured results](../reports/baseline_results.md) and
 [ten-slide notes](../reports/progress_slides.md) for experiment outcomes.
+
+Follow-up: [320px and validation-selected threshold comparison](../reports/resolution_thresholds/comparison.md).
+Each experiment's settings are tracked in `experiments/*/config.yaml`.
+
+Completed: original 224px training (epoch 9 selected), threshold-only evaluation of
+that saved checkpoint, and a new 320px training run (epoch 10 selected). Test macro
+F1 is 0.510 / 0.527 at 224px and 0.470 / 0.490 at 320px for fixed / selected
+thresholds. Restaurant F1 remains zero. The original decisions below are retained
+as the baseline record; the follow-up uses validation-only per-class F1 thresholds.
+
+At that time, the 208 excluded frames remained unrecovered. The six needed source videos were not
+found in the local folders checked, and the manifest's Drive folder returned 404
+through the connected account. No frames were restored and no new captures were
+collected. The subsequently provided clean export resolves frame recovery; it does
+not constitute new independent captures.
 
 ## Project requirements reviewed
 

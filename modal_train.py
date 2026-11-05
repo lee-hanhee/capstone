@@ -6,6 +6,7 @@ Run: .venv/bin/modal run modal_train.py
 import io
 from pathlib import Path
 import zipfile
+import yaml
 
 import modal
 
@@ -13,17 +14,25 @@ app = modal.App("see2hear-baseline")
 image = (modal.Image.debian_slim(python_version="3.13")
          .pip_install_from_requirements("requirements.txt")
          .add_local_dir("baseline", "/root/baseline", ignore=["__pycache__"])
-         .add_local_dir("data/baseline", "/data"))
+         .add_local_dir("data/baseline", "/root/data/baseline")
+         .add_local_dir("data/v3_320", "/root/data/v3_320")
+         .add_local_dir("data/v3_224_clean", "/root/data/v3_224_clean")
+         .add_local_dir("artifacts/baseline", "/root/artifacts/baseline"))
 
 
 @app.function(image=image, gpu="T4", cpu=2, memory=4096,
               timeout=1800, retries=0, max_containers=1,
               scaledown_window=2)
-def run_training():
+def run_training(settings):
     from baseline.train import train
 
     output = Path("/tmp/results")
-    train(Path("/data"), output, epochs=10, max_seconds=1500)
+    if "checkpoint" in settings:
+        from baseline.evaluate_saved import evaluate_saved
+        evaluate_saved(settings, output)
+    else:
+        train(Path(settings["data_dir"]), output, settings=settings)
+    (output / "config.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in output.iterdir():
@@ -32,11 +41,12 @@ def run_training():
 
 
 @app.local_entrypoint()
-def main():
-    output = Path("artifacts/baseline")
+def main(config: str = "experiments/v3_224/config.yaml"):
+    settings = yaml.safe_load(Path(config).read_text())
+    output = Path(settings["output_dir"])
     if (output / "metrics.json").exists():
-        raise FileExistsError("Results already exist; move artifacts/baseline before starting another paid run")
-    payload = run_training.remote()
+        raise FileExistsError(f"Results already exist in {output}; choose a fresh output_dir")
+    payload = run_training.remote(settings)
     output.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         for name in archive.namelist():

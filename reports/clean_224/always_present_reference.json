@@ -1,0 +1,65 @@
+{
+  "frames": 200,
+  "macro_f1": 0.7146364898046333,
+  "label_accuracy": 0.56,
+  "exact_match_accuracy": 0.42,
+  "per_class": {
+    "gate": {
+      "positives": 90,
+      "negatives": 110,
+      "accuracy": 0.45,
+      "balanced_accuracy": 0.5,
+      "precision": 0.45,
+      "recall": 1.0,
+      "f1": 0.6206896551724138,
+      "average_precision": 0.45,
+      "roc_auc": 0.5,
+      "confusion_matrix_tn_fp_fn_tp": [
+        0,
+        110,
+        0,
+        90
+      ]
+    },
+    "restaurant": {
+      "positives": 123,
+      "negatives": 77,
+      "accuracy": 0.615,
+      "balanced_accuracy": 0.5,
+      "precision": 0.615,
+      "recall": 1.0,
+      "f1": 0.7616099071207431,
+      "average_precision": 0.615,
+      "roc_auc": 0.5,
+      "confusion_matrix_tn_fp_fn_tp": [
+        0,
+        77,
+        0,
+        123
+      ]
+    },
+    "washroom": {
+      "positives": 123,
+      "negatives": 77,
+      "accuracy": 0.615,
+      "balanced_accuracy": 0.5,
+      "precision": 0.615,
+      "recall": 1.0,
+      "f1": 0.7616099071207431,
+      "average_precision": 0.615,
+      "roc_auc": 0.5,
+      "confusion_matrix_tn_fp_fn_tp": [
+        0,
+        77,
+        0,
+        123
+      ]
+    }
+  },
+  "irrelevant": {
+    "accuracy": 0.645,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+  }
+}

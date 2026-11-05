@@ -1,5 +1,15 @@
 # Measured baseline results
 
+Historical experiment. The current presentation uses the [clean-input 224px run](clean_224/results.md)
+and [single-model slide plan](progress_slides.md). Original measurements below are preserved;
+the changed data and split prevent a controlled score comparison.
+
+**Scope:** this report preserves the original 224px / 0.5-threshold experiment.
+Follow-up test macro F1 is 0.527 with 224px validation-selected thresholds, 0.470
+at 320px / 0.5, and 0.490 at 320px with selected thresholds. Restaurant test F1 is
+zero throughout. See the [four-case comparison](resolution_thresholds/comparison.md)
+and [updated presentation](progress_slides.md). The original results below are unchanged.
+
 One confirmed experiment; no hyperparameter search or test-driven checkpoint selection.
 Best validation checkpoint: epoch 9 of 10.
 Validation macro F1: 0.741; test macro F1: 0.510.

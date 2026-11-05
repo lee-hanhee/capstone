@@ -1,127 +1,112 @@
-# See2Hear: airport sign presence baseline
+# See2Hear: compact airport sign classifier
 
-One ImageNet-pretrained [MobileNetV3-Small](https://huggingface.co/timm/mobilenetv3_small_100.lamb_in1k)
-backbone with three independent binary heads: **gate, restaurant, washroom**.
-Multiple labels can be present. If all outputs are below 0.5, predict no relevant
-sign. This baseline classifies whole images; instance detection, OCR, arrow
-association, and speech are future work.
+One ImageNet-pretrained MobileNetV3-Small encoder with three independent binary
+heads: **gate, restaurant, washroom**. Multiple classes may be present; all three
+absent predictions mean no relevant sign. This component classifies whole-image
+presence. Localization, OCR, destination-arrow association and speech remain future work.
 
-## Results and progress presentation
+## Current results and presentation
 
-- [Ten slides with 20-second speaking notes](reports/progress_slides.md)
-- [Measured results, architecture rationale, settings, and limitations](reports/baseline_results.md)
-- [PNG and editable SVG figures](reports/figures/)
-- [Dataset audit and project requirements](docs/baseline_preparation.md)
+- [Selected clean-input 224px model: results and limitations](reports/clean_224/results.md)
+- [Ten slides: claims, figures and 20-second scripts](reports/progress_slides.md)
+- [Good + Outstanding rubric alignment](reports/rubric_alignment.md)
+- [Preparation and label provenance](docs/baseline_preparation.md)
+- [SVG figures](reports/svg/) · [PNG figures](reports/png/) · [contact sheet](reports/progress_contact_sheet.png) — tracked presentation outputs
 
-The model is a candidate for later iOS deployment. Server timing is reported
-separately; no phone is selected and iOS latency is unmeasured. Numerical pass
-targets have not been set.
+The clean-input run completed ten epochs; **validation selected epoch 2**, before
+full fine-tuning. Configured validation-selected thresholds give test macro F1
+**0.611**; the same checkpoint at fixed 0.5 gives **0.682**. Threshold fitting helps
+validation but harms test here. Both are reported; no rule is chosen retrospectively
+by maximizing test performance. Restaurant recall is 120/123 (97.6%), with 59 false
+alarms. Gate and washroom misses remain substantial.
 
-## Setup
+Model: **1.52M parameters, 5.93 MiB checkpoint**. Mean warm forward time: **4.77 ms
+on T4**, **7.28 ms on one server CPU thread**. These exclude preprocessing, camera,
+network and speech. **iOS latency and complete task performance remain unmeasured**;
+no numerical accuracy or latency acceptance targets are defined.
 
-Python 3.13 was used locally and on Modal. Install the pinned dependencies:
+## Setup and reproduce this run
+
+Python 3.13 was used locally and on Modal:
 
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/modal setup
+.venv/bin/python -m baseline.prepare_clean --config experiments/v3_224_clean/config.yaml
+.venv/bin/modal run modal_train.py --config experiments/v3_224_clean/config.yaml
 ```
 
-Place the extracted dataset at `annotated/` with these label files:
+Inputs: `unannotated/manifest.json` plus its PNGs. The export contains **4,551 copies
+of 1,200 unique source frames from 12 videos**. All **208 previously excluded frames
+are included**, with zero exclusions inside this clean cohort. This is a subset of
+the earlier 19-video cohort; it does not represent newly collected independent sessions.
 
-```text
-annotated/gate/ground_truth_bulk_v1.json
-annotated/restaurant/ground_truth_bulk_v1.json
-annotated/washroom/ground_truth_bulk_v1.json
-```
+The export has no label JSONs and the annotated/ directory is absent. Preparation
+uses retained ground-truth labels and boxes in `data/baseline/manifest.json`, checks
+all encoded export labels and positive-instance filenames, and verifies the SHA-256
+and dimensions of each selected source image. Preserve that earlier manifest to
+reproduce this run. It contains the original boxes, including duplicate signs.
 
-Keep the referenced PNGs beside each JSON. Legacy batches are not used.
+The user-confirmed seed-42 **8/2/2 video split** yields **800 train / 200 validation /
+200 test frames**, with class coverage checked before training. Neighboring frames
+stay in the same partition. Only two test videos and one seed are evaluated; distinct
+clips may show the same signs. Historical results use different data/splits and
+cannot establish a controlled improvement over this run.
 
-## Run the baseline
+## Experiment configuration
+
+[experiments/v3_224_clean/config.yaml](experiments/v3_224_clean/config.yaml) drives
+the current run. It retains the confirmed settings: 224px RGB bilinear padding,
+ImageNet normalization, no augmentation, batch 32, AdamW, weight decay 0.0001,
+training-count-weighted BCE, three frozen epochs at head LR 0.001 followed by seven
+all-layer epochs at LR 0.0001. Pretrained weight revision and seed are pinned.
+
+Select the checkpoint by validation macro F1 at 0.5. Then fit one threshold per
+class by validation F1; ties favor the threshold nearest 0.5, then the larger one.
+Validation and test scores are saved separately. The resulting checkpoint stores
+its input size and selected thresholds. Weighted-BCE scores are not calibrated
+confidence estimates.
 
 ```sh
-# Audit source annotations (standard library only).
-python scripts/audit_dataset.py
-
-# Merge labels by source frame; use an unmarked negative-folder copy as input.
-.venv/bin/python -m baseline.data
-
-# One bounded T4 job; downloads checkpoint, predictions, history, and metrics.
-.venv/bin/modal run modal_train.py
-
-# Build measured report, ten slide scripts, and figures locally.
-.venv/bin/python -m baseline.report
+.venv/bin/python -m baseline.predict path/to/image.png --checkpoint artifacts/v3_224_clean/best.pt
 ```
 
-Positive PNGs have red boxes drawn into their pixels. Training uses unmarked copies
-of the same source frame from another class folder. A negative in one class folder
-can still be positive for other classes. The 208 frames with no unmarked copy are
-excluded with approval, leaving 1,692 observations. This removes all triple-positive
-frames and 54.5% of restaurant-positive frames, so the experiment has a substantial
-selection bias. No annotation lines are erased or inpainted.
+Prediction runs locally on CPU without downloading weights. Prepared images and
+large manifests are under gitignored `data/`; checkpoints are under gitignored
+`artifacts/`. Small configs, metrics and validation/test CSVs are in `reports/clean_224/`.
+Existing completed outputs are protected against overwrite.
 
-All original positive instance boxes, including duplicate signs, remain in
-`data/baseline/manifest.json` in **original-image pixel coordinates**. They are
-metadata for future detection and are not model inputs. The excluded frames and
-their boxes are also recorded. The original label files remain unchanged.
-
-The split uses 13 training, 3 validation, and 3 test videos, seed 42, with class
-coverage checked before training. This yields 1,209 / 249 / 234 frames. There is no
-source-video overlap between partitions, though different videos may depict the
-same physical signs. Test is evaluated only after validation checkpoint selection.
-
-## Confirmed hyperparameters
-
-| Setting | Value |
-| --- | --- |
-| Input | RGB, bilinear letterbox to 224×224, ImageNet normalization |
-| Augmentation | None |
-| Epochs | 3 frozen-backbone + 7 all-layer fine-tuning |
-| Batch size | 32 |
-| Optimizer | AdamW; weight decay 0.0001 |
-| Learning rates | Heads: 0.001; fine-tuning: 0.0001 |
-| Loss | BCEWithLogitsLoss; positive weights = train negatives / train positives |
-| Prediction thresholds | 0.5 per class |
-| Checkpoint selection | Highest validation macro F1; earliest on ties |
-| Seed | 42 |
-
-Weighted-loss sigmoid scores are not calibrated confidence estimates. The saved
-configuration records exact class weights, normalization, software versions, and
-the Hugging Face weight revision. Reproducibility across hardware/software is not
-guaranteed bit for bit.
-
-## Predict on a new, unmarked image
+## Presentation figures
 
 ```sh
-.venv/bin/python -m baseline.predict path/to/image.png
+.venv/bin/python scripts/setup_lato.py
+.venv/bin/python scripts/build_progress_figures.py
 ```
 
-This loads `artifacts/baseline/best.pt` and runs locally on CPU with no model
-download. It returns three scores, the predicted classes, and an `irrelevant`
-Boolean. Use the original image rather than an already-padded prepared image.
+Use **figure-only SVGs** from `reports/svg/` and copy each title from the Markdown
+slide plan into Google Slides. The SVGs have **no slide title, number or footer**.
+Diagram labels, axes and legends remain because they explain the evidence.
+SVGs outline actual Lato glyphs so their appearance is portable. Matching PNGs are supplied.
+The exact palette is navy `#1B2C4A`, orange `#F07A2A`, teal `#2F7F81`, slate `#3B4A66`,
+and white `#FFFFFF`. Lato files and license are cached in `artifacts/fonts/`.
 
-Prepared images, large generated JSON files, and model artifacts are gitignored.
-The dataset audit is saved to `data/dataset_audit.json`, and the preparation summary
-to `data/baseline/preparation_summary.json`. The raw ground truth and
-`data/baseline/manifest.json` retain all boxes; `reports/` contains shareable metrics,
-figures, predictions, and slide notes. Keep `artifacts/baseline/best.pt` locally.
-The runner refuses to overwrite an existing metrics file; move the previous run
-directory before intentionally starting another paid experiment.
+The main ten-slide story presents this one selected checkpoint, with requirement
+links and concrete next tests. It does not retell the old resolution-experiment
+timeline. Detailed threshold comparisons remain in the technical results. Ten slides at 20 seconds are
+3:20; the entire team presentation must still meet the ten-minute requirement.
 
-## Modal budget
+## Historical results and budget
 
-The authorized budget is **$10**. The runner uses one T4, two CPU cores, 4 GiB RAM,
-a 30-minute function timeout, a 25-minute training timer, no automatic retries,
-and no persistent storage or deployed endpoint. At the
-[listed rates](https://modal.com/pricing) checked November 3, 2026, the function's
-maximum compute estimate is approximately $0.36, excluding image build/startup and
-other workspace usage. Actual billing is separate from this estimate. The timeout
-limits this job's compute duration; it is not an account-wide dollar cap.
+Original results remain unchanged in [the 224px baseline report](reports/baseline_results.md)
+and [the resolution/threshold comparison](reports/resolution_thresholds/comparison.md).
+The old YAMLs, measured reports and checkpoints remain for experiment tracking.
+Superseded presentation notes, archived SVGs and duplicate exports have been removed;
+the presentation folders contain only the current ten SVGs, their PNG equivalents
+and a contact sheet.
 
-```sh
-.venv/bin/modal billing report --for today --resolution h --show-resources
-```
-
-The confirmed experiment is a baseline, not a hyperparameter search. Later changes
-to input resolution, augmentation, loss, thresholds, or architecture should be
-recorded as separate experiments without tuning to this test set.
+The authorized overall Modal budget remains **$10**. Each job uses one T4, two CPU
+cores, 4 GiB RAM, a 30-minute timeout, a 25-minute training timer, no automatic
+retries and no persistent inference deployment. Actual usage is recorded separately;
+training cost is not recurring per-query cost, and a timeout is not an account-wide
+dollar cap. No additional experiment starts automatically.

@@ -1,0 +1,13 @@
+{
+  "classes": [
+    "gate",
+    "restaurant",
+    "washroom"
+  ],
+  "thresholds": [
+    0.5570202469825745,
+    0.8332200646400452,
+    0.20931954681873322
+  ],
+  "selection": "per-class validation F1; nearest 0.5 then larger threshold on ties"
+}

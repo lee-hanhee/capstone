@@ -1,0 +1,28 @@
+{
+  "budget_usd": 10,
+  "apps": {
+    "ap-zxx1Iu6MvpHntHDEYzFsFx": "v3_224_thresholds",
+    "ap-3tPbiC3Kqnwn1HyTvvvHoQ": "v3_320"
+  },
+  "reported_usage": [
+    {
+      "object_id": "ap-3tPbiC3Kqnwn1HyTvvvHoQ",
+      "description": "see2hear-baseline",
+      "environment": "main",
+      "interval_start": "2026-11-05T03:00:00",
+      "cost": "0.01911284",
+      "experiment": "v3_320"
+    },
+    {
+      "object_id": "ap-zxx1Iu6MvpHntHDEYzFsFx",
+      "description": "see2hear-baseline",
+      "environment": "main",
+      "interval_start": "2026-11-05T03:00:00",
+      "cost": "0.00619946",
+      "experiment": "v3_224_thresholds"
+    }
+  ],
+  "reported_total_usd": "0.02531230",
+  "checked_at_utc": "2026-11-05T03:29:30Z",
+  "note": "Reported at check time, not a final invoice; billing may lag and image builds can be attributed separately."
+}

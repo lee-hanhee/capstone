@@ -36,7 +36,6 @@ def generate(data_dir, run_dir, output):
 
     def save(fig, name):
         fig.savefig(figures / f"{name}.png", dpi=180, bbox_inches="tight")
-        fig.savefig(figures / f"{name}.svg", bbox_inches="tight")
         plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(11, 5))
@@ -204,6 +203,11 @@ def generate(data_dir, run_dir, output):
                       "See [usage record](modal_usage.json).")
     report = f"""# Measured baseline results
 
+**Scope:** original 224px / 0.5 baseline, preserved as the historical record.
+The current presentation uses the [clean-input 224px run](clean_224/results.md).
+See the [four-case follow-up comparison](resolution_thresholds/comparison.md) and
+[current claim-and-evidence slides](progress_slides.md) for subsequent experiments.
+
 One confirmed experiment; no hyperparameter search or test-driven checkpoint selection.
 Best validation checkpoint: epoch {result['best_epoch']} of {result['epochs_completed']}.
 Validation macro F1: {result['validation']['macro_f1']:.3f}; test macro F1: {test['macro_f1']:.3f}.
@@ -331,58 +335,7 @@ experiment needs a separate documented configuration and untouched evaluation da
 """
     (output / "baseline_results.md").write_text(report)
 
-    slides = [
-        ("3.1", "A small model answers three presence questions", "",
-         "Camera image → padded 224×224 input → shared MobileNetV3-Small → three binary heads.",
-         "Our first baseline answers three questions about each camera frame: is there a gate sign, a restaurant sign, or a washroom sign? One shared image encoder feeds three independent binary heads. Several answers can be positive together. This stage identifies sign categories; later components will read their content."),
-        ("3.2", "Choose a mobile-oriented starting point", "",
-         f"{result['parameters']/1e6:.2f}M parameters after replacing the ImageNet classifier.",
-         f"We chose MobileNetV3-Small because its architecture was designed around mobile CPU efficiency. ImageNet pretrained weights give us an initial visual representation without training from scratch. Our three-head version has {result['parameters']/1e6:.2f} million parameters. This is a practical starting point for iOS evaluation, although phone performance has not yet been measured."),
-        ("3.3", "Remove annotation shortcuts", "dataset_balance",
-         "1,692 unmarked frames retained; 208 marked-only frames excluded.",
-         "The positive images contain red annotation boxes, so feeding those pixels into training could reveal the answer. We recovered unmarked copies from other class folders and merged labels by source frame. We excluded 208 marked-only frames. That removes every triple-positive example and over half the restaurant-positive frames, limiting the evaluation."),
-        ("3.4", "Keep related frames together", "dataset_balance",
-         "13 training / 3 validation / 3 test videos; seed 42.",
-         "We split by video rather than by image, keeping adjacent frames and duplicate sign instances together. Thirteen videos train the model, three select its checkpoint, and three provide the final test. Each partition contains every class. Different videos may still show the same physical signs, so this does not test unseen-airport generalization."),
-        ("3.5", "Start with transfer learning, then fine-tune", "learning_curves",
-         f"3 frozen epochs + 7 fine-tuning epochs; selected epoch {result['best_epoch']}.",
-         "For three epochs, we trained only the new heads. We then fine-tuned all layers for seven epochs at a lower learning rate. Training-count-weighted binary cross-entropy addresses class imbalance. Validation macro F1 selects the checkpoint. Only this architecture was attempted; the learning curves document its behavior without establishing superiority over alternatives."),
-        ("4.1", "Measure each class separately", "class_metrics",
-         f"Test macro F1: {test['macro_f1']:.3f} on {test['frames']} frames.",
-         f"On the held-out test videos, macro F1 is {test['macro_f1']:.2f}. We also report precision, recall, and accuracy separately for each sign category. {best_class.title()} has the highest F1 and {worst_class} the lowest. These are whole-image presence results. They do not yet evaluate reading text, assigning arrows, or speaking a correct response."),
-        ("4.2", "Compare with constant predictions", "baseline_comparison",
-         f"Model label accuracy: {pct(test['label_accuracy'])}; exact match: {pct(test['exact_match_accuracy'])}.",
-         "Our simple comparisons always predict no sign, or predict each class's training-set majority label. These baselines show why raw accuracy can look high when positive signs are uncommon. We report macro F1 and exact match alongside accuracy. Exact match requires all three predictions to be correct for the same frame."),
-        ("4.3", "Inspect false alarms and missed signs", "confusion_matrices",
-         "Use the test-example gallery as a companion visual.",
-         f"The restaurant head has {tp} true positives, {fn} missed positives, and {fp} false alarms at our fixed threshold. Its F1 is {restaurant['f1']:.2f}, while accuracy is {pct(restaurant['accuracy'])} because many labels are negative. This result needs improvement. We keep the threshold unchanged and will investigate with validation data and new independent captures."),
-        ("4.4", "Establish server latency measurements", "server_latency",
-         f"T4 mean: {gpu['mean_ms']:.2f} ms; server CPU mean: {cpu['mean_ms']:.2f} ms.",
-         f"A warm model call averages {gpu['mean_ms']:.1f} milliseconds on the Modal T4 and {cpu['mean_ms']:.1f} milliseconds on a single server CPU thread. These timings include the model and sigmoid only. They exclude camera capture, image preparation, and speech. We have no iPhone measurement yet, so these are reference timings, not mobile latency claims."),
-        ("4.5", "Connect the baseline to the final objectives", "",
-         "Next: clean originals, independent evaluation, and a named iPhone benchmark.",
-         "This baseline establishes measured sign-presence accuracy and model execution time, supporting two parts of our proposal. It does not establish full task accuracy or request-to-speech latency. Next we need clean originals, independent capture sessions, and an iPhone benchmark. Localization, text reading, direction association, and speech remain necessary for the complete assistant."),
-    ]
-    lines = ["# Progress on Models and Preliminary Results: ten slides", "",
-             "Each slide auto-advances after 20 seconds: 3 minutes 20 seconds total.",
-             "Scripts are approximately 40–60 words; rehearse and trim for your speaking pace.",
-             "Use one headline and one visual on each slide. Technical backup: [measured report](baseline_results.md).", ""]
-    for number, title, figure, headline, script in slides:
-        lines += [f"## Slide {number}: {title}", "", f"**On slide:** {headline}", ""]
-        if figure:
-            lines += [f"![{title}](figures/{figure}.png)", ""]
-        elif number == "3.1":
-            lines += ["```mermaid", "flowchart LR", "  A[Camera frame] --> B[224 x 224 padded RGB]",
-                      "  B --> C[Shared MobileNetV3-Small]", "  C --> D[Gate sigmoid]",
-                      "  C --> E[Restaurant sigmoid]", "  C --> F[Washroom sigmoid]", "```", ""]
-        lines += [f"**20-second script:** {script}", ""]
-    lines += ["## Backup and attribution", "", "- [Measured results, settings, limitations, and sources](baseline_results.md)",
-              "- [Test examples](figures/test_examples.png): deterministic illustrative successes/errors.",
-              "- Model source: [Hugging Face](https://huggingface.co/timm/mobilenetv3_small_100.lamb_in1k).",
-              "- Architecture source: [MobileNetV3 paper](https://arxiv.org/abs/1905.02244).",
-              "- All charts are generated from this experiment. No iOS measurements or numerical pass targets exist yet.", ""]
-    (output / "progress_slides.md").write_text("\n".join(lines))
-    print(f"Saved measured report, ten slide scripts, and PNG/SVG figures to {output}")
+    print(f"Saved historical measured report and PNG figures to {output}")
 
 
 if __name__ == "__main__":

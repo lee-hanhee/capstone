@@ -16,12 +16,14 @@ from sklearn.metrics import (accuracy_score, average_precision_score,
                              f1_score, precision_score, recall_score, roc_auc_score)
 import timm
 import torch
+import yaml
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import functional as TF
 
 from baseline.data import CLASSES
 from baseline.model import MODEL_ID, SignClassifier
+from baseline.thresholds import select_thresholds
 
 
 def tensor(image, mean, std):
@@ -42,8 +44,8 @@ class Frames(Dataset):
         return x, torch.tensor(row["labels"], dtype=torch.float32)
 
 
-def metrics(labels, probabilities):
-    predicted = (probabilities >= 0.5).astype(int)
+def metrics(labels, probabilities, thresholds=0.5):
+    predicted = (probabilities >= np.asarray(thresholds)).astype(int)
     result = {"frames": len(labels),
               "macro_f1": float(f1_score(labels, predicted, average="macro", zero_division=0)),
               "label_accuracy": float((labels == predicted).mean()),
@@ -89,9 +91,9 @@ def evaluate(model, loader, device, criterion):
 
 
 @torch.inference_mode()
-def latency(model, device):
+def latency(model, device, size=224):
     model.to(device).eval()
-    x = torch.zeros(1, 3, 224, 224, device=device)
+    x = torch.zeros(1, 3, size, size, device=device)
     def sync():
         if device.type == "cuda":
             torch.cuda.synchronize()
@@ -112,21 +114,75 @@ def latency(model, device):
             "device": str(device), "is_ios_measurement": False}
 
 
-def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device_name=None):
+def save_predictions(path, rows, labels, probabilities):
+    with path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["image", "source_video", "frame_index"] +
+                        [f"true_{c}" for c in CLASSES] + [f"prob_{c}" for c in CLASSES])
+        for row, target, probability in zip(rows, labels, probabilities):
+            writer.writerow([row["image"], row["source_video"], row["frame_index"]] +
+                            target.astype(int).tolist() + probability.tolist())
+
+
+def finish_evaluation(model, loaders, subsets, device, criterion, output, checkpoint,
+                      tune_thresholds=True):
+    # Select thresholds before running test inference; test labels cannot affect them.
+    _, val, val_y, val_probs = evaluate(model, loaders["val"], device, criterion)
+    save_predictions(output / "validation_predictions.csv", subsets["val"], val_y, val_probs)
+    thresholds = select_thresholds(val_y, val_probs) if tune_thresholds else [0.5] * 3
+    config = dict(checkpoint["config"], thresholds=thresholds)
+    checkpoint["config"] = config
+    torch.save(checkpoint, output / "best.pt")
+    (output / "config.json").write_text(json.dumps(config, indent=2) + "\n")
+    (output / "thresholds.json").write_text(json.dumps({
+        "classes": CLASSES, "thresholds": thresholds,
+        "selection": "per-class validation F1; nearest 0.5 then larger threshold on ties"
+                     if tune_thresholds else "fixed 0.5",
+    }, indent=2) + "\n")
+    _, test, y, probs = evaluate(model, loaders["test"], device, criterion)
+    save_predictions(output / "test_predictions.csv", subsets["test"], y, probs)
+    return {"validation": val, "test": test,
+            "selected_thresholds": dict(zip(CLASSES, thresholds)),
+            "validation_selected_thresholds": metrics(val_y, val_probs, thresholds),
+            "test_selected_thresholds": metrics(y, probs, thresholds)}, y, probs
+
+
+def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device_name=None,
+          settings=None):
     start = time.monotonic()
+    settings = settings or {}
+    seed = settings.get("seed", 42)
+    epochs = settings.get("epochs", epochs)
+    frozen_epochs = settings.get("frozen_epochs", 3)
+    batch_size = settings.get("batch_size", 32)
+    head_lr = settings.get("head_learning_rate", 1e-3)
+    finetune_lr = settings.get("finetune_learning_rate", 1e-4)
+    weight_decay = settings.get("weight_decay", 1e-4)
     output.mkdir(parents=True, exist_ok=True)
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     torch.set_num_threads(2)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     device = torch.device(device_name or ("cuda" if torch.cuda.is_available() else "cpu"))
     manifest = json.loads((data_dir / "manifest.json").read_text())
     if manifest["classes"] != CLASSES:
         raise ValueError("Unexpected class order")
+    size = manifest["image_size"]
+    if settings.get("image_size", size) != size:
+        raise ValueError("Config image size differs from prepared data")
+    if settings.get("model_id", MODEL_ID) != MODEL_ID:
+        raise ValueError("This simple trainer supports MobileNetV3-Small only")
+    for key, expected in {"optimizer": "AdamW", "loss": "weighted_bce",
+                          "augmentation": "none",
+                          "checkpoint_selection": "validation_macro_f1_at_0.5"}.items():
+        if settings.get(key, expected) != expected:
+            raise ValueError(f"Unsupported {key}: {settings[key]}")
+    if settings.get("threshold_selection", "fixed_0.5") not in {"fixed_0.5", "per_class_validation_f1"}:
+        raise ValueError("Unsupported threshold selection")
     subsets = {s: [r for r in manifest["rows"] if r["split"] == s]
                for s in ["train", "val", "test"]}
     video_sets = {s: {r["source_video"] for r in rows} for s, rows in subsets.items()}
@@ -137,23 +193,23 @@ def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device
         if not len(rows) or np.any(y.sum(0) == 0) or np.any(y.sum(0) == len(rows)):
             raise ValueError(f"Missing positive/negative class examples: {s}")
 
-    revision = model_info(MODEL_ID).sha if pretrained else None
+    revision = (settings.get("hf_revision") or model_info(MODEL_ID).sha) if pretrained else None
     model = SignClassifier(pretrained=pretrained, revision=revision).to(device)
     cfg = timm.data.resolve_model_data_config(model.backbone)
     mean, std = list(cfg["mean"]), list(cfg["std"])
-    loaders = {s: DataLoader(Frames(data_dir, rows, mean, std), batch_size=32,
+    loaders = {s: DataLoader(Frames(data_dir, rows, mean, std), batch_size=batch_size,
                              shuffle=(s == "train"), num_workers=0)
                for s, rows in subsets.items()}
     train_y = np.array([r["labels"] for r in subsets["train"]])
     pos_weight = (len(train_y) - train_y.sum(0)) / train_y.sum(0)
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight, dtype=torch.float32, device=device))
     config = {"model_id": MODEL_ID, "hf_revision": revision, "pretrained": pretrained,
-              "classes": CLASSES, "seed": 42, "epochs_requested": epochs,
-              "frozen_epochs": min(3, epochs), "batch_size": 32,
-              "head_learning_rate": 1e-3, "finetune_learning_rate": 1e-4,
-              "optimizer": "AdamW", "weight_decay": 1e-4,
+              "classes": CLASSES, "seed": seed, "epochs_requested": epochs,
+              "frozen_epochs": min(frozen_epochs, epochs), "batch_size": batch_size,
+              "head_learning_rate": head_lr, "finetune_learning_rate": finetune_lr,
+              "optimizer": "AdamW", "weight_decay": weight_decay,
               "thresholds": [0.5] * 3, "mean": mean, "std": std,
-              "image_size": 224, "pos_weight": pos_weight.tolist(),
+              "image_size": size, "pos_weight": pos_weight.tolist(),
               "selection": "highest validation macro F1; earliest epoch on ties",
               "max_seconds": max_seconds, "device": str(device),
               "torch": str(torch.__version__), "timm": timm.__version__,
@@ -163,17 +219,17 @@ def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device
     (output / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     for p in model.backbone.parameters():
         p.requires_grad = False
-    optimizer = torch.optim.AdamW(model.heads.parameters(), lr=1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.heads.parameters(), lr=head_lr, weight_decay=weight_decay)
     best, history = -1.0, []
     for epoch in range(epochs):
         if epoch and time.monotonic() - start >= max_seconds:
             break
-        if epoch == 3:
+        if epoch == frozen_epochs:
             for p in model.backbone.parameters():
                 p.requires_grad = True
-            optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=finetune_lr, weight_decay=weight_decay)
         model.train()
-        if epoch < 3:
+        if epoch < frozen_epochs:
             model.backbone.eval()  # Freeze running batch-normalization statistics too.
         train_loss = 0.0
         for x, y in loaders["train"]:
@@ -186,7 +242,7 @@ def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device
             optimizer.step()
             train_loss += loss.item() * len(y)
         val_loss, val, _, _ = evaluate(model, loaders["val"], device, criterion)
-        row = {"epoch": epoch + 1, "phase": "heads" if epoch < 3 else "finetune",
+        row = {"epoch": epoch + 1, "phase": "heads" if epoch < frozen_epochs else "finetune",
                "train_loss": train_loss / len(train_y), "val_loss": val_loss,
                "val_macro_f1": val["macro_f1"], "val_label_accuracy": val["label_accuracy"]}
         history.append(row)
@@ -199,24 +255,19 @@ def train(data_dir, output, epochs=10, max_seconds=1500, pretrained=True, device
 
     checkpoint = torch.load(output / "best.pt", map_location=device, weights_only=True)
     model.load_state_dict(checkpoint["state_dict"])
-    _, test, y, probs = evaluate(model, loaders["test"], device, criterion)
+    evaluation, y, probs = finish_evaluation(
+        model, loaders, subsets, device, criterion, output, checkpoint,
+        tune_thresholds=settings.get("threshold_selection") == "per_class_validation_f1")
     majority = (train_y.mean(0) >= 0.5).astype(float)
     baselines = {"always_absent": metrics(y, np.zeros_like(probs)),
                  "train_majority": metrics(y, np.tile(majority, (len(y), 1)))}
-    with (output / "test_predictions.csv").open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["image", "source_video", "frame_index"] +
-                        [f"true_{c}" for c in CLASSES] + [f"prob_{c}" for c in CLASSES])
-        for row, target, probability in zip(subsets["test"], y, probs):
-            writer.writerow([row["image"], row["source_video"], row["frame_index"]] +
-                            target.astype(int).tolist() + probability.tolist())
-    device_latency = latency(model, device)
+    device_latency = latency(model, device, size)
     torch.set_num_threads(1)
-    cpu_latency = latency(model, torch.device("cpu"))
+    cpu_latency = latency(model, torch.device("cpu"), size)
     cpu_latency["threads"] = 1
     result = {"status": "trained" if pretrained else "synthetic_smoke_test_only",
               "best_epoch": checkpoint["best_epoch"], "epochs_completed": len(history),
-              "validation": checkpoint["validation_metrics"], "test": test,
+              **evaluation,
               "baselines": baselines, "latency_training_device": device_latency,
               "latency_server_cpu": cpu_latency,
               "parameters": sum(p.numel() for p in model.parameters()),
@@ -232,5 +283,13 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", type=Path, default=Path("data/baseline"))
     parser.add_argument("--output", type=Path, default=Path("artifacts/baseline"))
     parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--config", type=Path)
     args = parser.parse_args()
-    train(args.data_dir, args.output, args.epochs)
+    settings = yaml.safe_load(args.config.read_text()) if args.config else None
+    data_dir = Path(settings["data_dir"]) if settings else args.data_dir
+    output = Path(settings["output_dir"]) if settings else args.output
+    if (output / "best.pt").exists():
+        raise FileExistsError(f"Checkpoint already exists in {output}")
+    train(data_dir, output, args.epochs, settings=settings)
+    if settings:
+        (output / "config.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))

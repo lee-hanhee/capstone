@@ -14,12 +14,12 @@ SIZE = 224
 PADDING = (124, 116, 104)
 
 
-def letterbox(image):
-    return ImageOps.pad(image.convert("RGB"), (SIZE, SIZE),
+def letterbox(image, size=SIZE):
+    return ImageOps.pad(image.convert("RGB"), (size, size),
                         method=Image.Resampling.BILINEAR, color=PADDING)
 
 
-def prepare(data_dir, output):
+def prepare(data_dir, output, size=SIZE):
     frames = defaultdict(lambda: defaultdict(list))
     hashes = {}
     for label in CLASSES:
@@ -59,7 +59,7 @@ def prepare(data_dir, output):
         with Image.open(path) as image:
             if image.size != (source["width"], source["height"]):
                 raise ValueError(f"Wrong dimensions: {path}")
-            letterbox(image).save(output / "images" / name)
+            letterbox(image, size).save(output / "images" / name)
         rows.append({**entry, "image": f"images/{name}",
                      "unmarked_source": f"{label}/{source['file_name']}",
                      "original_size": [source["width"], source["height"]]})
@@ -96,8 +96,8 @@ def prepare(data_dir, output):
             row["split"] = split
         counts[split] = {"frames": len(subset), "positive_frames": dict(zip(CLASSES, positives)),
                          "videos": sorted(members)}
-    manifest = {"classes": CLASSES, "image_size": SIZE, "seed": 42,
-                "preprocessing": "RGB, bilinear letterbox to 224x224; no crop or augmentation",
+    manifest = {"classes": CLASSES, "image_size": size, "seed": 42,
+                "preprocessing": f"RGB, bilinear letterbox to {size}x{size}; no crop or augmentation",
                 "padding_rgb": list(PADDING), "annotation_sha256": hashes,
                 "split_assignment_attempts": attempt + 1,
                 "split_policy": "first seeded 13/3/3 video assignment with positive/negative examples and >=2 positive videos per class per partition",
@@ -112,5 +112,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path("annotated"))
     parser.add_argument("--output", type=Path, default=Path("data/baseline"))
+    parser.add_argument("--size", type=int, default=SIZE)
     args = parser.parse_args()
-    prepare(args.data_dir, args.output)
+    prepare(args.data_dir, args.output, args.size)

@@ -1,0 +1,103 @@
+{
+  "model_id": "timm/mobilenetv3_small_100.lamb_in1k",
+  "hf_revision": "76b303ec28c466e9df37f4745dfb7aef20ab87ae",
+  "pretrained": true,
+  "classes": [
+    "gate",
+    "restaurant",
+    "washroom"
+  ],
+  "seed": 42,
+  "epochs_requested": 10,
+  "frozen_epochs": 3,
+  "batch_size": 32,
+  "head_learning_rate": 0.001,
+  "finetune_learning_rate": 0.0001,
+  "optimizer": "AdamW",
+  "weight_decay": 0.0001,
+  "thresholds": [
+    0.6908775568008423,
+    0.9788296222686768,
+    0.007332962471991777
+  ],
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "image_size": 320,
+  "pos_weight": [
+    4.955665024630542,
+    8.829268292682928,
+    0.95
+  ],
+  "selection": "highest validation macro F1; earliest epoch on ties",
+  "max_seconds": 1500,
+  "device": "cuda",
+  "torch": "2.15.0+cu132",
+  "timm": "1.0.30",
+  "python": "3.13.3",
+  "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+  "gpu": "Tesla T4",
+  "counts": {
+    "test": {
+      "frames": 234,
+      "positive_frames": {
+        "gate": 47,
+        "restaurant": 22,
+        "washroom": 95
+      },
+      "videos": [
+        "IMG_8457.MOV",
+        "IMG_8460.MOV",
+        "IMG_8466.MOV"
+      ]
+    },
+    "val": {
+      "frames": 249,
+      "positive_frames": {
+        "gate": 22,
+        "restaurant": 29,
+        "washroom": 109
+      },
+      "videos": [
+        "IMG_8448.MOV",
+        "IMG_8456.MOV",
+        "IMG_8458.MOV"
+      ]
+    },
+    "train": {
+      "frames": 1209,
+      "positive_frames": {
+        "gate": 203,
+        "restaurant": 123,
+        "washroom": 620
+      },
+      "videos": [
+        "IMG_8447.MOV",
+        "IMG_8449.MOV",
+        "IMG_8451.MOV",
+        "IMG_8452.MOV",
+        "IMG_8453.MOV",
+        "IMG_8454.MOV",
+        "IMG_8455.MOV",
+        "IMG_8459.MOV",
+        "IMG_8461.MOV",
+        "IMG_8462.MOV",
+        "IMG_8463.MOV",
+        "IMG_8464.MOV",
+        "IMG_8465.MOV"
+      ]
+    }
+  },
+  "annotation_sha256": {
+    "gate": "b6be2708ae2cee7ae101a6a596b89f6df67608dce69b38916bd89b9c2599a421",
+    "restaurant": "156cd38784a7a04d26142cbb16b8174e68de402fd5907de379419f315a126d96",
+    "washroom": "2e4739da21b1b959b7b56b024c2f2dfbc1716f3bf7354fabc3ab7ae59ca3696d"
+  }
+}

@@ -18,7 +18,7 @@ def predict(checkpoint_path, image_path):
     model = SignClassifier(pretrained=False).eval()
     model.load_state_dict(checkpoint["state_dict"])
     with Image.open(image_path) as image:
-        x = tensor(letterbox(image), config["mean"], config["std"]).unsqueeze(0)
+        x = tensor(letterbox(image, config["image_size"]), config["mean"], config["std"]).unsqueeze(0)
     with torch.inference_mode():
         probabilities = model(x).sigmoid()[0].tolist()
     present = [c for c, p, t in zip(config["classes"], probabilities, config["thresholds"]) if p >= t]
